@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import pgv.ackObject.ObjectACK;
 
 public class Receptor extends Thread {
+	
 	/**
 	 * Ventana de ACK que envía confirmaciones y tabla de Bytes para contenido que
 	 * se recibe
@@ -36,7 +37,10 @@ public class Receptor extends Thread {
 	private static FileOutputStream fos;
 	private static byte[] contenido;
 
-	// envio del ack cuando confirmemos que ha llegado X paquete
+
+	/**
+	 * Flujos y Datagram para enviar el mensaje que confirma la recepción
+	 */
 	private static ByteArrayOutputStream baos;
 	private static DataOutputStream dos;
 	private static DatagramPacket mensajeAck;

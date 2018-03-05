@@ -81,7 +81,7 @@ public class Receptor extends Thread {
 				System.out.println(mensajeActual + " / " + totalPaquetes);
 
 				/**
-				 * El mensaje se mostrará como recibido solo si ha sido validado Y corresponde al mensaje actual.
+				 * Se marcará como recibido solo si ha sido validado Y corresponde al mensaje actual.
 				 */
 				for (int i = 0; i < listaACK.size(); i++) {
 					if (listaACK.get(i).isValidado() && listaACK.get(i).getNumPaquetes() == mensajeActual)

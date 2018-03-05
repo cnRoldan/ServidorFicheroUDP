@@ -1,6 +1,8 @@
 package pgv.servidor;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -8,100 +10,115 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
-import java.net.SocketTimeoutException;
-import java.net.UnknownHostException;
 
-import javax.naming.CommunicationException;
+import pgv.ackObject.ObjectACK;
+import pgv.mainApp.MainApp;
 
 public class Emisor extends Thread {
-	final int INTENTOS = 3;
-	final int ESPERA_ACK = 3000;
-	File imagen;
-	DatagramSocket socket = null;
-	DatagramPacket mensaje;
-	DatagramPacket ack;
-	final Integer PUERTO = 1200;
-	Integer numeroDePaquetes;
-	InetAddress red;
-	ByteArrayOutputStream baos;
-	DataOutputStream dos;
+	private DatagramSocket socket = null;
+	private DatagramPacket mensaje;
 
-	FileInputStream fis;
-	byte[] buff = new byte[1000];
-	// byte[] bufACK= new ;
-	int intentos;
-	boolean enviado;
-	int datosBuff;
-	
-	//TODO dos hilos de EMisor, uno recibe ACK, otro env√≠a paquete
-	//TODO vector de diez posiciones, cada OBJ ACK, tendr√° dos atributos, VALIDADO, NumPaquetes
-	//TODO LOs dos hilos comparten el vector, una zona de exclusividad har√° que no metan mano al mismo tiempo.
-	
-	
-	@Override
-	public void run() {
-		// TODO enviar mediante un hilo
-		super.run();
-		try {
-			imagen = new File("img.gif");
-			fis = new FileInputStream(imagen);
+	private byte[] buff = new byte[1000];
+	private int numeroDePaquetes;
+	public int numeroPaqueteEnviado = 0;
 
-			socket = new DatagramSocket();
-			socket.setSoTimeout(ESPERA_ACK);
-			ack = new DatagramPacket(new byte[1], 1);
+	private final Integer PUERTO = 1200;
+	private final int ESPERA_ACK = 3000;
 
-			red = InetAddress.getByName("localhost");
-			numeroDePaquetes = (int) Math.ceil(imagen.length() / 1000.0);
-			baos = new ByteArrayOutputStream(1008);
-			dos = new DataOutputStream(baos);
+	public class EmisorReceptor extends Thread {
+		private ByteArrayInputStream bais;
+		private DataInputStream dis;
 
-			for (int i = 1; i <= numeroDePaquetes; i++) {
+		@Override
+		public void run() {
+			super.run();
+			try {
+				socket = new DatagramSocket(PUERTO);
+				mensaje = new DatagramPacket(new byte[4], 4);
+				while (true) {
+					socket.receive(mensaje);
+					// leemos el contenido del mensaje
+					bais = new ByteArrayInputStream(mensaje.getData());
+					dis = new DataInputStream(bais);
 
-				// A√±adir cabecera
-				dos.writeInt(i);
-				dos.writeInt(numeroDePaquetes);
-
-				datosBuff = fis.read(buff);
-				dos.write(buff, 0, datosBuff);
-
-				dos.flush();
-				baos.flush();
-
-				mensaje = new DatagramPacket(baos.toByteArray(), baos.toByteArray().length, red, PUERTO);
-				intentos = 0;
-				enviado = false;
-				do {
-					socket.send(mensaje);
-					intentos++;
-					try {
-						socket.receive(ack);
-						if (ack.getData()[0] == 6)
-							enviado = true;
-					} catch (SocketTimeoutException e) {
-						if (intentos == INTENTOS)
-							throw new CommunicationException("No se reciben los mensajes enviados");
+					if (dis.readInt() == 6) {
+						// Si el entero es igual a 6, se valida.
+						MainApp.vector.get(dis.readInt()).setValidado(true);
+						MainApp.vector.remove(0);
+						MainApp.vector.add(new ObjectACK(false, numeroDePaquetes));
 					}
-				} while (!enviado);
-				baos.reset();
+				}
+
+			} catch (Exception e) {
 			}
-
-			dos.close();
-			baos.close();
-			System.out.println("Transmisi√≥n completada...");
-
-		} catch (SocketException e) {
-			e.printStackTrace();
-		} catch (UnknownHostException e) {
-			e.printStackTrace();
-		} catch (Exception e) {
-			e.printStackTrace();
-		} finally {
-			socket.close();
 		}
 	}
 
-	public static void main(String[] args) {
-		Emisor emisor = new Emisor();
-		emisor.start();
+	public class EmisorEnviador extends Thread {
+		private File imagen;
+		private FileInputStream fis;
+		private InetAddress red;
+		private ByteArrayOutputStream baos;
+		private DataOutputStream dos;
+		private int datosBuff;
+		@Override
+		public void run() {
+			super.run();
+			try {
+				imagen = new File("img.gif");
+				fis = new FileInputStream(imagen);
+
+				socket = new DatagramSocket();
+				socket.setSoTimeout(ESPERA_ACK);
+
+				red = InetAddress.getByName("localhost");
+				numeroDePaquetes = (int) Math.ceil(imagen.length() / 1000.0);
+
+				baos = new ByteArrayOutputStream(1008);
+				dos = new DataOutputStream(baos);
+
+				for (int i = 0; i < numeroDePaquetes; i++) {
+					// AÒadir cabecera
+					dos.writeInt(numeroPaqueteEnviado);
+					dos.writeInt(numeroDePaquetes);
+
+					datosBuff = fis.read(buff);
+					dos.write(buff, 0, datosBuff);
+
+					dos.flush();
+					baos.flush();
+
+					// Solo enviar· el paquete i si el objetoACK correspondiente a la misma posicion
+					// est· validado.
+
+					// TODO receptor, enviar· la seÒal cuando un paquete ACK estÈ enviado, y este
+					// lanzar· el siguiente paquete
+					if (!MainApp.vector.get(i).isValidado()) {
+						mensaje = new DatagramPacket(baos.toByteArray(), baos.toByteArray().length, red, PUERTO);
+						socket.send(mensaje);
+						System.out.println("Paquete " + numeroPaqueteEnviado + " enviado.");
+						numeroPaqueteEnviado = i;
+					}
+					baos.reset();
+				}
+
+			} catch (SocketException e) {
+				e.printStackTrace();
+			} catch (Exception e) {
+				e.printStackTrace();
+			} finally {
+				socket.close();
+			}
+		}
+	}
+
+	@Override
+	public void run() {
+		super.run();
+		EmisorReceptor emisorQueRecibe = new EmisorReceptor();
+		emisorQueRecibe.start();
+		
+		EmisorEnviador emisorQueEnvia = new EmisorEnviador();
+		emisorQueEnvia.start();
 	}
 }

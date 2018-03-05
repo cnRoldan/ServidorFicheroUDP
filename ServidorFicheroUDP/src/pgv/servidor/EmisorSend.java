@@ -50,9 +50,13 @@ public class EmisorSend extends Thread {
 			baos = new ByteArrayOutputStream(1008);
 			dos = new DataOutputStream(baos);
 			
-			for (int i = 0; i < numeroDePaquetes; i++) {
-				//Instancio un objeto ACK y añado
-				ObjectACK obj = new ObjectACK(false, i);
+
+			
+			for (int i = 0; i < numeroDePaquetes; i++) {			
+				for (int j = 0; j < 10; j++) {
+					ObjectACK obj = new ObjectACK(false, i);
+					vector.add(obj);
+				}
 				// Añadir cabecera
 				dos.writeInt(i);
 				dos.writeInt(numeroDePaquetes);
@@ -63,6 +67,7 @@ public class EmisorSend extends Thread {
 				dos.flush();
 				baos.flush();
 
+				
 				mensaje = new DatagramPacket(baos.toByteArray(), baos.toByteArray().length, red, PUERTO);
 				socket.send(mensaje);
 				baos.reset();

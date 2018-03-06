@@ -10,18 +10,16 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
+import java.util.ArrayList;
 
 import pgv.ackObject.ObjectACK;
-import pgv.mainApp.MainApp;
 
 public class Emisor extends Thread {
+	public static ArrayList<ObjectACK> vector = new ArrayList<>(10);
 	private DatagramSocket socket = null;
 	private DatagramPacket mensaje;
-
-	private byte[] buff = new byte[1000];
 	private int numeroDePaquetes;
 	public int numeroPaqueteEnviado = 0;
-
 	private final Integer PUERTO = 1200;
 	private final int ESPERA_ACK = 3000;
 
@@ -35,6 +33,7 @@ public class Emisor extends Thread {
 			try {
 				socket = new DatagramSocket(PUERTO);
 				mensaje = new DatagramPacket(new byte[5], 5);
+				socket.setSoTimeout(ESPERA_ACK);
 				while (true) {
 					socket.receive(mensaje);
 					// leemos el contenido del mensaje
@@ -43,16 +42,19 @@ public class Emisor extends Thread {
 
 					if (dis.readInt() == 6) {
 						// Si el entero es igual a 6, se valida.
-						MainApp.vector.get(dis.readInt()).setValidado(true);
+						vector.get(dis.readInt()).setValidado(true);
+
 						// Recorro el vector y solo borro si el validado corresponde a la primera
 						// posicion, ya que el Arraylist se va rodando.
+
+						// Semaphore.acquire();
 						int i = 0;
-							while (MainApp.vector.get(i).isValidado() && i == 0 && i<MainApp.vector.size()) {
-								MainApp.vector.remove(0);
-								MainApp.vector.add(new ObjectACK(false, numeroDePaquetes));
-								i++;
-							}
-						
+						while (vector.get(i).isValidado() && i == 0 && i < vector.size()) {
+							vector.remove(0);
+							vector.add(new ObjectACK(false, numeroDePaquetes));
+							i++;
+						}
+						// Semaphore.release();
 					}
 				}
 
@@ -68,6 +70,7 @@ public class Emisor extends Thread {
 		private ByteArrayOutputStream baos;
 		private DataOutputStream dos;
 		private int datosBuff;
+		private byte[] buff = new byte[1000];
 
 		@Override
 		public void run() {
@@ -96,16 +99,15 @@ public class Emisor extends Thread {
 					dos.flush();
 					baos.flush();
 
-					// Solo enviará el paquete i si el objetoACK correspondiente a la misma posicion
-					// está validado.
-
-					// TODO receptor, enviará la señal cuando un paquete ACK esté enviado, y este
-					// lanzará el siguiente paquete
-					if (!MainApp.vector.get(i).isValidado()) {
-						mensaje = new DatagramPacket(baos.toByteArray(), baos.toByteArray().length, red, PUERTO);
-						socket.send(mensaje);
-						System.out.println("Paquete " + numeroPaqueteEnviado + " enviado.");
-						numeroPaqueteEnviado = i;
+					// Solo enviará el mensaje si NO está validado en el vector.
+					// TODO en este punto el hilo EmisorReceptor deberá despertar al hilo.
+					for (int j = 0; j < vector.size(); j++) {
+						if (!vector.get(j).isValidado()) {
+							mensaje = new DatagramPacket(baos.toByteArray(), baos.toByteArray().length, red, PUERTO);
+							socket.send(mensaje);
+							System.out.println("Paquete " + numeroPaqueteEnviado + " enviado.");
+							numeroPaqueteEnviado++;
+						}
 					}
 					baos.reset();
 				}
@@ -123,10 +125,21 @@ public class Emisor extends Thread {
 	@Override
 	public void run() {
 		super.run();
+		// TODO Enviar primeramente los 10 primeros paquetes, antes de inicializar los
+		// hilos.
+		for (int i = 0; i < vector.size(); i++) {
+			vector.add(new ObjectACK(false, i));
+		}
+
 		EmisorReceptor emisorQueRecibe = new EmisorReceptor();
 		emisorQueRecibe.start();
 
 		EmisorEnviador emisorQueEnvia = new EmisorEnviador();
 		emisorQueEnvia.start();
+	}
+
+	public static void main(String[] args) {
+		Emisor emisor = new Emisor();
+		emisor.start();
 	}
 }
